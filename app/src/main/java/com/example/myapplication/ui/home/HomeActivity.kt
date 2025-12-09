@@ -2,6 +2,7 @@ package com.example.myapplication.ui.home
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
@@ -13,6 +14,7 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.registerForActivityResult
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -25,6 +27,7 @@ import com.example.myapplication.databinding.ActivityHomeBinding
 import com.example.myapplication.ui.dialog.DialogCheckFaceId
 import com.example.myapplication.ui.dialog.DialogTypeChoosePhoto
 import com.example.myapplication.ui.dialog.UploadErrorDialog
+import com.example.myapplication.ui.generate.GenerateActivity
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -32,32 +35,26 @@ import java.io.File
 import java.io.FileOutputStream
 
 class HomeActivity : BaseActivity<ActivityHomeBinding>(
-    inflter = ActivityHomeBinding::inflate
+    inflater = ActivityHomeBinding::inflate
 ) {
     // =================================================================
 // 1. Camera + Gallery launcher (KHÔNG còn xin quyền camera)
 // =================================================================
+   private var tempCameraFile: File?=null
 
-    private var tempCameraFile: File? = null
+   private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()){uri ->
+       uri?.let{ handleImageUri(it) }
+   }
 
-    private val pickImageLauncher =
-        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            uri?.let { handleImageUri(it) }
-        }
+   private val pickPhotoPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()){uri ->
+       uri?.let{ handleImageUri(it) }
+   }
 
-    private val pickPhotoPicker =
-        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            uri?.let { handleImageUri(it) }
-        }
-
-    private val cameraLauncher =
-        registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-            if (success) {
-                tempCameraFile?.let { file ->
-                    checkFaceAndProceed(file)
-                }
-            }
-        }
+   private val cameraLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()){success ->
+       if(success){
+           tempCameraFile?.let { checkFaceAndProceed(it) }
+       }
+   }
 
 // ❌ Removed: RequestPermission launcher (không xin lại ở đây)
 
@@ -66,30 +63,27 @@ class HomeActivity : BaseActivity<ActivityHomeBinding>(
 // 2. BottomSheet chọn ảnh
 // =================================================================
 
-    private var photoBottomSheet: DialogTypeChoosePhoto? = null
+  private var photoBottomSheet: DialogTypeChoosePhoto?=null
+  fun showPhotoPickerBottomSheet(){
+      photoBottomSheet?.dismissAllowingStateLoss()
+      photoBottomSheet = null
 
-    private fun showPhotoPickerBottomSheet() {
-        photoBottomSheet?.dismissAllowingStateLoss()
-        photoBottomSheet = null
+      photoBottomSheet = DialogTypeChoosePhoto(object : DialogTypeChoosePhoto.OnSelectedListener{
+          override fun onPhotoSelected() {
+              photoBottomSheet = null
+              openPhotoPicker()
+          }
 
-        photoBottomSheet = DialogTypeChoosePhoto(object : DialogTypeChoosePhoto.OnSelectedListener {
-            override fun onPhotoSelected() {
-                photoBottomSheet = null
-                openPhotoPicker()
-            }
+          override fun onCameraSelected() {
+              photoBottomSheet = null
+              openCamera()
+          }
+      })
+      if (!isFinishing && !isDestroyed && supportFragmentManager.isStateSaved.not()) {
+          photoBottomSheet?.show(supportFragmentManager, "PhotoPickerBottomSheet")
+      }
 
-            override fun onCameraSelected() {
-                photoBottomSheet = null
-                openCamera()
-            }
-        })
-
-        if (!isFinishing && !isDestroyed && supportFragmentManager.isStateSaved.not()) {
-            photoBottomSheet?.show(supportFragmentManager, "PhotoPickerBottomSheet")
-        }
-    }
-
-
+  }
 // =================================================================
 // 3. Gallery chọn ảnh
 // =================================================================
@@ -103,7 +97,6 @@ class HomeActivity : BaseActivity<ActivityHomeBinding>(
             pickImageLauncher.launch("image/*")
         }
     }
-
 
 // =================================================================
 // 4. Camera (KHÔNG xin permission ở đây)
@@ -179,9 +172,8 @@ class HomeActivity : BaseActivity<ActivityHomeBinding>(
             runOnUiThread {
                 when (result) {
                     FaceDetectionResult.SingleGoodFace -> {
-                        binding.generateAiArts.imgPhoto.setImageURI(Uri.fromFile(file))
+                        openGenerateActivity(file)
                     }
-
                     FaceDetectionResult.NoFace -> {
                         showFaceErrorDialog(
                             title = getString(R.string.no_face_detected),
@@ -300,6 +292,17 @@ class HomeActivity : BaseActivity<ActivityHomeBinding>(
         super.onDestroy()
     }
 
+    private fun openGenerateActivity(file: File) {
+        val intent = Intent(this, GenerateActivity::class.java).apply {
+//            putExtra(Const.IMAGE_GALLERY, file.path)
+//            putExtra(Const.IMAGE_TEMPLETE, selectedTemplatePath)
+//            putExtra(Const.IMAGE_TEMPLETE_CATEGORY, selectedTitle)
+//            putExtra(Const.ITEM_CODE, selectedItemCode)
+//            putExtra(Const.IMAGE_TEMPLETE_TYPE, selectedType)
+        }
+        startActivity(intent)
+    }
+
 
 }
 
@@ -314,3 +317,5 @@ class HomeActivity : BaseActivity<ActivityHomeBinding>(
 //RequestPermission() trả về boolean , hiển thị popup xin quyền,
 //isGranted = true → user bấm Allow
 //isGranted = false → user bấm Deny hoặc không cho phép
+//.dismissAllowingStateLoss()
+//→ Tắt/dismiss bottom sheet, cho phép mất state (tránh crash khi activity đang background).
